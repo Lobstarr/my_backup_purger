@@ -136,7 +136,7 @@ def files_to_keep_to_list(keep_files):
     return files_list
 
 
-def delete_excess_files(all_files, keep_list):
+def leave_only_removing_files(all_files, keep_list):
     for file in keep_list:
         while file in all_files:
             all_files.remove(file)
@@ -145,15 +145,15 @@ def delete_excess_files(all_files, keep_list):
 
 def unlink_files(files, is_test):
     for file in files:
+        print('Deleting file ' + str(file))
         if not is_test:
-            continue
-        else:
-            continue
+            file.unlink()
+
 
 if __name__ == '__main__':
     for settings in all_storage_settings:
         all_files_list = get_files(target_dir, settings['filetype'])
         files_to_keep = get_files_to_keep(all_files_list, settings)
         files_to_keep = files_to_keep_to_list(files_to_keep)
-        print(delete_excess_files(all_files_list, files_to_keep))
-        print(files_to_keep)
+        files_to_delete = leave_only_removing_files(all_files_list, files_to_keep)
+        unlink_files(files_to_delete, dry_run)

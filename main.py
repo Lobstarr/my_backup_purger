@@ -8,16 +8,8 @@ today = datetime.now()
 
 config = configparser.ConfigParser()
 config.read('bak_config.ini')
-# The target directory
-target_dir = config['files']['target_dir']
-# Glob pattern for matching files (so that you select only what you want)
-glob_pattern = config['files']['glob_pattern']
-# Pattern for extracting date out of the filenames (gets passed to datetime.strptime)
-date_pattern_text = config['files']['date_pattern_text']
-date_pattern_text_len = len(date_pattern_text)
-date_pattern = config['files']['date_pattern']
 
-extensions = config['files']['extensions']
+extensions = config['global']['extensions']
 if ';' in extensions:
     extensions = extensions.split(';')
 else:
@@ -32,15 +24,20 @@ for filetype in extensions:
         'keep_last': int(config[filetype]['keep_last']),
         'keep_weeks': int(config[filetype]['keep_weeks']),
         'keep_months': int(config[filetype]['keep_months']),
-        'keep_years': int(config[filetype]['keep_years'])
+        'keep_years': int(config[filetype]['keep_years']),
+        'target_dir': config[filetype]['target_dir'],
+        'glob_pattern': config[filetype]['glob_pattern'] + filetype,
+        'date_pattern_text': config[filetype]['date_pattern_text'],
+        'date_pattern': config[filetype]['date_pattern']
     })
 
 dry_run = config['global'].getboolean('dry_run')
 
 
-def get_files(target, file_ext):
-    path = Path(target)
-    files = [file for file in path.glob(glob_pattern) if file.is_file() and os.path.splitext(file)[1] == file_ext]
+def get_files(settings):
+    path = Path(settings['target_dir'])
+    files = [file for file in path.glob(settings['glob_pattern']) if file.is_file() and
+             os.path.splitext(file)[1] == settings['filetype']]
     # files = [file for file in path.glob(glob_pattern) if file.is_file()]
     # for file in files:
     #     print(os.path.splitext(file))
@@ -81,7 +78,8 @@ def get_files_to_keep(files, storage_settings):
     for file in files:
 
         try:
-            date = datetime.strptime(file.name[0:date_pattern_text_len], date_pattern)
+            date = datetime.strptime(file.name[0:len(storage_settings['date_pattern_text'])],
+                                     storage_settings['date_pattern'])
             parsed_file = {
                 'date': date,
                 'week': get_week(date, start_year),
@@ -133,7 +131,7 @@ def files_to_keep_to_list(keep_files):
     files_list += keep_files['months'].values()
     files_list += keep_files['years'].values()
 
-    return files_list
+    return list(dict.fromkeys(files_list))
 
 
 def leave_only_removing_files(all_files, keep_list):
@@ -151,9 +149,11 @@ def unlink_files(files, is_test):
 
 
 if __name__ == '__main__':
-    for settings in all_storage_settings:
-        all_files_list = get_files(target_dir, settings['filetype'])
-        files_to_keep = get_files_to_keep(all_files_list, settings)
+    for filetype_settings in all_storage_settings:
+        all_files_list = get_files(filetype_settings)
+        files_to_keep = get_files_to_keep(all_files_list, filetype_settings)
         files_to_keep = files_to_keep_to_list(files_to_keep)
+        for file in files_to_keep:
+            print('Keeping file ' + str(file))
         files_to_delete = leave_only_removing_files(all_files_list, files_to_keep)
         unlink_files(files_to_delete, dry_run)

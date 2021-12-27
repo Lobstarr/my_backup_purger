@@ -186,7 +186,7 @@ def generate_test_files(date_end, location):
 
 
 if __name__ == '__main__':
-    generate_test_files(datetime.strptime('2020-01-21', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
+    # generate_test_files(datetime.strptime('2020-01-21', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
 
     settings = read_config('bak_config.ini')
     settings['today'] = datetime.now()
@@ -196,7 +196,6 @@ if __name__ == '__main__':
         all_files_list = get_files(current_target_settings)
         # select files to keep and return readable structure
         files_to_keep = get_files_to_keep(all_files_list, current_target_settings)
-        print(files_to_keep)
         # flatten structure to list
         files_to_keep = files_to_keep_to_list(files_to_keep)
         for file in files_to_keep:

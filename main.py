@@ -3,9 +3,9 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import configparser
 import os
-import sys
 import random
 import string
+from pprint import pprint
 
 
 def get_files(target_settings):
@@ -196,10 +196,9 @@ if __name__ == '__main__':
         all_files_list = get_files(current_target_settings)
         # select files to keep and return readable structure
         files_to_keep = get_files_to_keep(all_files_list, current_target_settings)
+        pprint(files_to_keep)
         # flatten structure to list
         files_to_keep = files_to_keep_to_list(files_to_keep)
-        for file in files_to_keep:
-            print('Keeping file', str(file))
         # select files which we don't need to store anymore
         files_to_delete = leave_only_removing_files(all_files_list, files_to_keep)
 

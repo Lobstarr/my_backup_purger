@@ -185,7 +185,23 @@ def generate_test_files(date_end, location):
             pass
 
 
+def print_files_to_keep(files_dict):
+    print('Last')
+    for file in files_dict['last']:
+        print(str(file).zfill(2), files_dict['last'][file])
+    print('Weekly')
+    for file in files_dict['weeks']:
+        print(str(file).zfill(2), files_dict['weeks'][file])
+    print('Monthly')
+    for file in files_dict['months']:
+        print(str(file).zfill(2), files_dict['months'][file])
+    print('Yearly')
+    for file in files_dict['years']:
+        print(file, files_dict['years'][file])
+
+
 if __name__ == '__main__':
+    # Generate test files from now to specified date. Store them in specified location
     # generate_test_files(datetime.strptime('2020-01-21', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
 
     settings = read_config('bak_config.ini')
@@ -196,7 +212,8 @@ if __name__ == '__main__':
         all_files_list = get_files(current_target_settings)
         # select files to keep and return readable structure
         files_to_keep = get_files_to_keep(all_files_list, current_target_settings)
-        pprint(files_to_keep)
+        # show readable
+        print_files_to_keep(files_to_keep)
         # flatten structure to list
         files_to_keep = files_to_keep_to_list(files_to_keep)
         # select files which we don't need to store anymore

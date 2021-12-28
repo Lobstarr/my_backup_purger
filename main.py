@@ -5,16 +5,29 @@ import configparser
 import os
 import random
 import string
-from pprint import pprint
+from shutil import copy2
+import hashlib
 
 
 def get_files(target_settings):
-    path = Path(target_settings['dst_dir'])
-    files = [file for file in path.glob(target_settings['filename_pattern']) if file.is_file() and
-             os.path.splitext(file)[1] == target_settings['filetype']]
-    files.sort(reverse=True)
+    # Get both remote and local files
+    local_files = get_files_to_dict(target_settings['dst_dir'],
+                                    target_settings['filename_pattern'])
 
-    return files
+    if target_settings['src_dir'] != '':
+        remote_files = get_files_to_dict(target_settings['src_dir'],
+                                         target_settings['filename_pattern'])
+        allfiles = remote_files
+        for key, item in local_files.items():
+            allfiles[key] = item
+    else:
+        allfiles = local_files
+
+    out_files_list = []
+    for key in sorted(allfiles, reverse=True):
+        out_files_list.append(allfiles[key])
+
+    return out_files_list
 
 
 def get_week(date, year_start=datetime.now().year - 1):
@@ -62,23 +75,31 @@ def get_files_to_keep(all_files, storage_settings):
             print(f'Failed reading date from "{current_file.name}", skipping')
             continue
 
-        if count < storage_settings['keep_last']:
+        if count < storage_settings['keep_last'] or storage_settings['keep_last'] < 0:
 
             keep_files['last'][count + 1] = current_file
             # print(f'{count} out of last {keep_last} that are always kept')
             today_week = parsed_file['week']
+            count += 1
 
-        elif parsed_file['week'] > today_week - storage_settings['keep_weeks'] and storage_settings['keep_weeks'] > 0:
+        elif (parsed_file['week'] >= today_week - storage_settings['keep_weeks'] and
+              storage_settings['keep_weeks'] > 0) or storage_settings['keep_weeks'] < 0:
 
-            keep_week_index = parsed_file['week'] - (today_week - storage_settings['keep_weeks'])
+            if storage_settings['keep_weeks'] < 0:
+                keep_week_index = parsed_file['week']
+            else:
+                keep_week_index = parsed_file['week'] - (today_week - storage_settings['keep_weeks'])
             keep_files['weeks'][keep_week_index] = current_file
             # print('File of week', file['week'], '(keeping week', keep_week_index, 'out of', keep_weeks,')')
             today_month = parsed_file['month']
 
-        elif parsed_file['month'] > today_month - storage_settings['keep_months'] and \
-                storage_settings['keep_months'] > 0:
+        elif (parsed_file['month'] >= today_month - storage_settings['keep_months'] and
+              storage_settings['keep_months'] > 0) or storage_settings['keep_months'] < 0:
 
-            keep_month_index = parsed_file['month'] - (today_month - storage_settings['keep_months'])
+            if storage_settings['keep_months'] < 0:
+                keep_month_index = parsed_file['month']
+            else:
+                keep_month_index = parsed_file['month'] - (today_month - storage_settings['keep_months'])
             keep_files['months'][keep_month_index] = current_file
             # print('File of month', file['month'], '(keeping month', keep_month_index, 'out of', keep_months,')')
 
@@ -90,7 +111,7 @@ def get_files_to_keep(all_files, storage_settings):
                 keep_year_index = parsed_file['year']
             keep_files['years'][keep_year_index] = current_file
             # print('File of year', file['year'], '(keeping year', keep_year_index, 'out of', keep_years,')')
-        count += 1
+
 
     return keep_files
 
@@ -105,10 +126,16 @@ def files_to_keep_to_list(keep_files):
     return list(dict.fromkeys(files_list))
 
 
-def leave_only_removing_files(all_files, keep_list):
+def leave_only_removing_files(all_files, keep_list, target_settings):
     for file_to_keep in keep_list:
         while file_to_keep in all_files:
             all_files.remove(file_to_keep)
+
+    if not target_settings['delete_remote_files']:
+        temp_files_list = all_files.copy()
+        for remote_file in temp_files_list:
+            if remote_file.parents[0] == Path(target_settings['src_dir']):
+                all_files.remove(remote_file)
     return all_files
 
 
@@ -120,11 +147,11 @@ def unlink_files(files, is_test):
             file_to_delete.unlink()
 
 
-def get_files_from_share(path, filetypes=None):
-    if filetypes is None:
-        filetypes = []
+def get_files_to_dict(target_dir, filename_pattern='*'):
+    path = Path(target_dir)
+    files = {file.name: file for file in path.glob(filename_pattern) if file.is_file()}
 
-    return 0
+    return files
 
 
 def read_config(config_file):
@@ -144,6 +171,8 @@ def read_config(config_file):
                 for param in config[section]:
                     if param in ['keep_last', 'keep_weeks', 'keep_months', 'keep_years']:
                         target_params[param] = int(config[section][param])
+                    elif param in ['delete_remote_files', 'delete_copied_files']:
+                        target_params[param] = config[section].getboolean(param)
                     elif param == 'active':
                         continue
                     elif param == 'filename_pattern':
@@ -181,28 +210,70 @@ def generate_test_files(date_end, location):
                                                                     ''.join(random.choices(string.digits, k=6)))
         today += timedelta(-1)
         path = Path(os.path.join(location, filename))
-        with open(path, 'w+') as f:
-            pass
+        with open(path, 'wb') as f_out:
+            f_out.write(os.urandom(50982))
 
 
 def print_files_to_keep(files_dict):
-    print('Last')
-    for file in files_dict['last']:
-        print(str(file).zfill(2), files_dict['last'][file])
-    print('Weekly')
-    for file in files_dict['weeks']:
-        print(str(file).zfill(2), files_dict['weeks'][file])
-    print('Monthly')
-    for file in files_dict['months']:
-        print(str(file).zfill(2), files_dict['months'][file])
-    print('Yearly')
-    for file in files_dict['years']:
-        print(file, files_dict['years'][file])
+    sections = ['last', 'weeks', 'months', 'years']
+    for section in sections:
+        print(section)
+        for file in files_dict[section]:
+            print(str(file).zfill(2), files_dict[section][file])
+
+
+def get_remote_files_to_copy(files, target_settings):
+    remote_files = []
+    for file in files:
+        if file.parents[0] == Path(target_settings['src_dir']):
+            remote_files.append(file)
+    return remote_files
+
+
+def copy_remote_files(files_list, target_settings, is_test):
+    dst_dir = target_settings['dst_dir']
+    print('\n')
+    for file_to_copy in files_list:
+        dst_file = Path(os.path.join(dst_dir, file_to_copy.name))
+        print('Copying', file_to_copy, 'to', dst_file)
+
+        if not is_test:
+            copy2(file_to_copy, dst_file)
+            print('Copy done, calculating hash')
+            local_hash = get_file_hash_sha256(dst_file)
+            remote_hash = get_file_hash_sha256(file_to_copy)
+            if local_hash == remote_hash:
+                print('Hash matches')
+                if target_settings['delete_copied_files']:
+                    file_to_copy.unlink()
+            else:
+                print('Copy failed, deleting corrupt local file')
+                try:
+                    dst_file.unlink()
+                except:
+                    print('Error copying and unlinking ')
+
+
+def get_file_hash_sha256(target_file):
+    # BUF_SIZE is totally arbitrary, change for your app!
+    buf_size = 65536  # lets read stuff in 64kb chunks!
+
+    sha256 = hashlib.sha256()
+
+    with open(target_file, 'rb') as f:
+        while True:
+            data = f.read(buf_size)
+            if not data:
+                break
+            sha256.update(data)
+
+    # print("SHA1: {0}".format(sha256.hexdigest()))
+    return sha256.hexdigest()
 
 
 if __name__ == '__main__':
     # Generate test files from now to specified date. Store them in specified location
-    # generate_test_files(datetime.strptime('2020-01-21', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
+    # generate_test_files(datetime.strptime('2021-10-10', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
 
     settings = read_config('bak_config.ini')
     settings['today'] = datetime.now()
@@ -217,7 +288,9 @@ if __name__ == '__main__':
         # flatten structure to list
         files_to_keep = files_to_keep_to_list(files_to_keep)
         # select files which we don't need to store anymore
-        files_to_delete = leave_only_removing_files(all_files_list, files_to_keep)
-
+        files_to_delete = leave_only_removing_files(all_files_list, files_to_keep, current_target_settings)
+        remote_files_to_copy = get_remote_files_to_copy(files_to_keep, current_target_settings)
+        copy_remote_files(remote_files_to_copy, current_target_settings, False)
+        # copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
         # delete these files
         unlink_files(files_to_delete, settings['dry_run'])

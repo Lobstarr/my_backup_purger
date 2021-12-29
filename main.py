@@ -112,7 +112,6 @@ def get_files_to_keep(all_files, storage_settings):
             keep_files['years'][keep_year_index] = current_file
             # print('File of year', file['year'], '(keeping year', keep_year_index, 'out of', keep_years,')')
 
-
     return keep_files
 
 
@@ -290,7 +289,7 @@ if __name__ == '__main__':
         # select files which we don't need to store anymore
         files_to_delete = leave_only_removing_files(all_files_list, files_to_keep, current_target_settings)
         remote_files_to_copy = get_remote_files_to_copy(files_to_keep, current_target_settings)
-        copy_remote_files(remote_files_to_copy, current_target_settings, False)
+        copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
         # copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
         # delete these files
         unlink_files(files_to_delete, settings['dry_run'])

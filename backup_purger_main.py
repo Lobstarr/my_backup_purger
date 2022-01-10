@@ -5,9 +5,10 @@ import configparser
 import os
 import random
 import string
-from shutil import copy2
-import hashlib
-
+import shutil
+import sys
+import subprocess
+import copy_mod
 
 def get_files(target_settings):
     # Get both remote and local files
@@ -237,10 +238,11 @@ def copy_remote_files(files_list, target_settings, is_test):
         print('Copying', file_to_copy, 'to', dst_file)
 
         if not is_test:
-            copy2(file_to_copy, dst_file)
+            copy_file(file_to_copy, dst_file)
+
             print('Copy done, calculating hash')
-            local_hash = get_file_hash_sha256(dst_file)
-            remote_hash = get_file_hash_sha256(file_to_copy)
+            local_hash = copy_mod.get_file_hash_sha256(dst_file)
+            remote_hash = copy_mod.get_file_hash_sha256(file_to_copy)
             if local_hash == remote_hash:
                 print('Hash matches')
                 if target_settings['delete_copied_files']:
@@ -253,21 +255,24 @@ def copy_remote_files(files_list, target_settings, is_test):
                     print('Error copying and unlinking ')
 
 
-def get_file_hash_sha256(target_file):
-    # BUF_SIZE is totally arbitrary, change for your app!
-    buf_size = 65536  # lets read stuff in 64kb chunks!
-
-    sha256 = hashlib.sha256()
-
-    with open(target_file, 'rb') as f:
-        while True:
-            data = f.read(buf_size)
-            if not data:
-                break
-            sha256.update(data)
-
-    # print("SHA1: {0}".format(sha256.hexdigest()))
-    return sha256.hexdigest()
+def copy_file(src, dst):
+    copy_mod.cp_progress(src, dst)
+#     if sys.platform == 'win32':
+#         #os.system('xcopy "%s" "%s"' % (src, dst))
+#         proc = subprocess.Popen('xcopy "%s" "%s"' % (src, dst), shell=True,
+#                                 stdout=subprocess.PIPE)
+#         while True:
+#             line = proc.stdout.readline()
+#             if line.strip() == "":
+#                 pass
+#             else:
+#                 text = line.strip().decode('866')
+#                 print(text)
+#             if not line:
+#                 break
+#         proc.wait()
+#     else:
+#         shutil.copy(src, dst)
 
 
 if __name__ == '__main__':
@@ -290,6 +295,5 @@ if __name__ == '__main__':
         files_to_delete = leave_only_removing_files(all_files_list, files_to_keep, current_target_settings)
         remote_files_to_copy = get_remote_files_to_copy(files_to_keep, current_target_settings)
         copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
-        # copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
         # delete these files
         unlink_files(files_to_delete, settings['dry_run'])

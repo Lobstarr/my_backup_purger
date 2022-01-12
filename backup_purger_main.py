@@ -8,6 +8,8 @@ import string
 import copy_mod
 import logging
 from logging.handlers import RotatingFileHandler
+import sys
+import traceback
 
 
 def get_files(target_settings):
@@ -92,9 +94,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_week_index = parsed_file['week'] - (today_week - storage_settings['keep_weeks'])
             keep_files['weeks'][keep_week_index] = current_file
-            backups_logger.debug('File of week ' + parsed_file['week'] +
-                                 ' (keeping week ' + keep_week_index + ' out of ' +
-                                 storage_settings['keep_weeks'] + ')')
+            backups_logger.debug('File of week ' + str(parsed_file['week']) +
+                                 ' (keeping week ' + str(keep_week_index) + ' out of ' +
+                                 str(storage_settings['keep_weeks']) + ')')
             today_month = parsed_file['month']
 
         elif (parsed_file['month'] >= today_month - storage_settings['keep_months'] and
@@ -105,9 +107,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_month_index = parsed_file['month'] - (today_month - storage_settings['keep_months'])
             keep_files['months'][keep_month_index] = current_file
-            backups_logger.debug('File of month ' + parsed_file['month'] +
-                                 ' (keeping month ' + keep_month_index + ' out of ' +
-                                 storage_settings['keep_months'] + ')')
+            backups_logger.debug('File of month ' + str(parsed_file['month']) +
+                                 ' (keeping month ' + str(keep_month_index) + ' out of ' +
+                                 str(storage_settings['keep_months']) + ')')
 
         elif (parsed_file['year'] >= today_yday - storage_settings['keep_years'] and
               storage_settings['keep_years'] > 0) or storage_settings['keep_years'] < 0:
@@ -116,9 +118,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_year_index = parsed_file['year']
             keep_files['years'][keep_year_index] = current_file
-            backups_logger.debug('File of year ' + parsed_file['year'] +
-                                 ' (keeping year ' + keep_year_index + ' out of ' +
-                                 storage_settings['keep_years'] + ')')
+            backups_logger.debug('File of year ' + str(parsed_file['year']) +
+                                 ' (keeping year ' + str(keep_year_index) + ' out of ' +
+                                 str(storage_settings['keep_years']) + ')')
 
     return keep_files
 
@@ -197,7 +199,8 @@ def read_config(config_file):
 
             else:
                 backups_logger.info('Skipping inactive section ' + section)
-    except:
+    except Exception as err:
+        backups_logger.error(err)
         backups_logger.error('Error reading config!')
         settings_structure['dry_run'] = True
 
@@ -270,7 +273,8 @@ def copy_remote_files(files_list, target_settings, is_test):
                 backups_logger.error('Copy failed, deleting corrupt local file')
                 try:
                     dst_file.unlink()
-                except:
+                except Exception as err:
+                    backups_logger.critical(err)
                     backups_logger.critical('Error copying and unlinking ')
             backups_logger.info('\n')
 
@@ -295,20 +299,25 @@ if __name__ == '__main__':
 
     settings = read_config('bak_config.ini')
     settings['today'] = datetime.now()
-
-    for current_target_settings in settings['targets']:
-        # collect all files from folder
-        all_files_list = get_files(current_target_settings)
-        # select files to keep and return readable structure
-        files_to_keep = get_files_to_keep(all_files_list, current_target_settings)
-        # show readable
-        print_files_to_keep(files_to_keep)
-        # flatten structure to list
-        files_to_keep = files_to_keep_to_list(files_to_keep)
-        # select files which we don't need to store anymore
-        files_to_delete = leave_only_removing_files(all_files_list, files_to_keep, current_target_settings)
-        remote_files_to_copy = get_remote_files_to_copy(files_to_keep, current_target_settings)
-        copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
-        # delete these files
-        unlink_files(files_to_delete, settings['dry_run'])
-    backups_logger.info("Finished at " + datetime.now().strftime("%Y/%m/%d, %H:%M:%S"))
+    try:
+        for current_target_settings in settings['targets']:
+            # collect all files from folder
+            all_files_list = get_files(current_target_settings)
+            # select files to keep and return readable structure
+            files_to_keep = get_files_to_keep(all_files_list, current_target_settings)
+            # show readable
+            print_files_to_keep(files_to_keep)
+            # flatten structure to list
+            files_to_keep = files_to_keep_to_list(files_to_keep)
+            # select files which we don't need to store anymore
+            files_to_delete = leave_only_removing_files(all_files_list, files_to_keep, current_target_settings)
+            remote_files_to_copy = get_remote_files_to_copy(files_to_keep, current_target_settings)
+            copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
+            # delete these files
+            unlink_files(files_to_delete, settings['dry_run'])
+        backups_logger.info("Finished at " + datetime.now().strftime("%Y/%m/%d, %H:%M:%S"))
+        sys.exit(0)
+    except Exception as unhandled_err:
+        backups_logger.critical(traceback.format_exc())
+        backups_logger.critical(unhandled_err)
+        sys.exit('Some error occurred')

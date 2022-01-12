@@ -5,10 +5,10 @@ import configparser
 import os
 import random
 import string
-import shutil
-import sys
-import subprocess
 import copy_mod
+import logging
+from logging.handlers import RotatingFileHandler
+
 
 def get_files(target_settings):
     # Get both remote and local files
@@ -28,6 +28,7 @@ def get_files(target_settings):
     for key in sorted(allfiles, reverse=True):
         out_files_list.append(allfiles[key])
 
+    backups_logger.debug(('Files read:', out_files_list))
     return out_files_list
 
 
@@ -62,7 +63,7 @@ def get_files_to_keep(all_files, storage_settings):
     count = 0
 
     for current_file in all_files:
-
+        backups_logger.debug(('Processing file:', current_file))
         try:
             date = datetime.strptime(current_file.name[0:len(storage_settings['date_pattern_text'])],
                                      storage_settings['date_pattern'])
@@ -73,13 +74,13 @@ def get_files_to_keep(all_files, storage_settings):
                 'year': date.year,
                 'path': current_file}
         except ValueError:
-            print(f'Failed reading date from "{current_file.name}", skipping')
+            backups_logger.critical(f'Failed reading date from "{current_file.name}", skipping')
             continue
 
         if count < storage_settings['keep_last'] or storage_settings['keep_last'] < 0:
-
+            backups_logger.debug(str(count) + ' out of last ' + str(storage_settings['keep_last'])
+                                 + ' that are always kept')
             keep_files['last'][count + 1] = current_file
-            # print(f'{count} out of last {keep_last} that are always kept')
             today_week = parsed_file['week']
             count += 1
 
@@ -91,7 +92,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_week_index = parsed_file['week'] - (today_week - storage_settings['keep_weeks'])
             keep_files['weeks'][keep_week_index] = current_file
-            # print('File of week', file['week'], '(keeping week', keep_week_index, 'out of', keep_weeks,')')
+            backups_logger.debug('File of week ' + parsed_file['week'] +
+                                 ' (keeping week ' + keep_week_index + ' out of ' +
+                                 storage_settings['keep_weeks'] + ')')
             today_month = parsed_file['month']
 
         elif (parsed_file['month'] >= today_month - storage_settings['keep_months'] and
@@ -102,7 +105,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_month_index = parsed_file['month'] - (today_month - storage_settings['keep_months'])
             keep_files['months'][keep_month_index] = current_file
-            # print('File of month', file['month'], '(keeping month', keep_month_index, 'out of', keep_months,')')
+            backups_logger.debug('File of month ' + parsed_file['month'] +
+                                 ' (keeping month ' + keep_month_index + ' out of ' +
+                                 storage_settings['keep_months'] + ')')
 
         elif (parsed_file['year'] >= today_yday - storage_settings['keep_years'] and
               storage_settings['keep_years'] > 0) or storage_settings['keep_years'] < 0:
@@ -111,7 +116,9 @@ def get_files_to_keep(all_files, storage_settings):
             else:
                 keep_year_index = parsed_file['year']
             keep_files['years'][keep_year_index] = current_file
-            # print('File of year', file['year'], '(keeping year', keep_year_index, 'out of', keep_years,')')
+            backups_logger.debug('File of year ' + parsed_file['year'] +
+                                 ' (keeping year ' + keep_year_index + ' out of ' +
+                                 storage_settings['keep_years'] + ')')
 
     return keep_files
 
@@ -123,6 +130,7 @@ def files_to_keep_to_list(keep_files):
     for item in keep_files:
         files_list += keep_files[item].values()
     # return list without duplicates
+    backups_logger.debug('Converted files to keep to list\n')
     return list(dict.fromkeys(files_list))
 
 
@@ -136,13 +144,14 @@ def leave_only_removing_files(all_files, keep_list, target_settings):
         for remote_file in temp_files_list:
             if remote_file.parents[0] == Path(target_settings['src_dir']):
                 all_files.remove(remote_file)
+    backups_logger.debug('List processed. Left only files to remove\n')
     return all_files
 
 
 def unlink_files(files, is_test):
-    print('\n')
+    backups_logger.info('Deleting excess files \n')
     for file_to_delete in files:
-        print('Deleting file', str(file_to_delete))
+        backups_logger.info('Deleting file' + str(file_to_delete))
         if not is_test:
             file_to_delete.unlink()
 
@@ -165,6 +174,10 @@ def read_config(config_file):
                 continue
             elif section == 'global':
                 settings_structure['dry_run'] = config['global'].getboolean('dry_run')
+                if config['global']['logging_level'].lower() == 'debug':
+                    backups_logger.setLevel(logging.DEBUG)
+                else:
+                    backups_logger.setLevel(logging.INFO)
             elif config[section].getboolean('active'):
                 target_params = {}
 
@@ -183,11 +196,12 @@ def read_config(config_file):
                 settings_structure['targets'].append(target_params)
 
             else:
-                print('Skipping inactive section ', section)
+                backups_logger.info('Skipping inactive section ' + section)
     except:
-        print('Error reading config!')
+        backups_logger.error('Error reading config!')
         settings_structure['dry_run'] = True
 
+    backups_logger.debug(['Config read!', settings_structure])
     return settings_structure
 
 
@@ -216,10 +230,13 @@ def generate_test_files(date_end, location):
 
 def print_files_to_keep(files_dict):
     sections = ['last', 'weeks', 'months', 'years']
+    backups_logger.info('\n')
     for section in sections:
-        print(section)
+
+        backups_logger.info(section)
         for file in files_dict[section]:
-            print(str(file).zfill(2), files_dict[section][file])
+            backups_logger.info(str(file).zfill(2) + ' ' + str(files_dict[section][file]))
+        backups_logger.info('\n')
 
 
 def get_remote_files_to_copy(files, target_settings):
@@ -227,57 +244,54 @@ def get_remote_files_to_copy(files, target_settings):
     for file in files:
         if file.parents[0] == Path(target_settings['src_dir']):
             remote_files.append(file)
+            backups_logger.debug(('Remote file marked to copy', file))
     return remote_files
 
 
 def copy_remote_files(files_list, target_settings, is_test):
     dst_dir = target_settings['dst_dir']
-    print('\n')
+    backups_logger.info('\n')
     for file_to_copy in files_list:
         dst_file = Path(os.path.join(dst_dir, file_to_copy.name))
-        print('Copying', file_to_copy, 'to', dst_file)
+        backups_logger.info('Copying remote file')
 
         if not is_test:
-            copy_file(file_to_copy, dst_file)
-
-            print('Copy done, calculating hash')
+            copy_mod.cp_progress(file_to_copy, dst_file)
+            backups_logger.info('Copy done')
+            backups_logger.info('\n')
+            backups_logger.info('Calculating hashes')
             local_hash = copy_mod.get_file_hash_sha256(dst_file)
             remote_hash = copy_mod.get_file_hash_sha256(file_to_copy)
             if local_hash == remote_hash:
-                print('Hash matches')
+                backups_logger.info('Hash matches')
                 if target_settings['delete_copied_files']:
                     file_to_copy.unlink()
             else:
-                print('Copy failed, deleting corrupt local file')
+                backups_logger.error('Copy failed, deleting corrupt local file')
                 try:
                     dst_file.unlink()
                 except:
-                    print('Error copying and unlinking ')
-
-
-def copy_file(src, dst):
-    copy_mod.cp_progress(src, dst)
-#     if sys.platform == 'win32':
-#         #os.system('xcopy "%s" "%s"' % (src, dst))
-#         proc = subprocess.Popen('xcopy "%s" "%s"' % (src, dst), shell=True,
-#                                 stdout=subprocess.PIPE)
-#         while True:
-#             line = proc.stdout.readline()
-#             if line.strip() == "":
-#                 pass
-#             else:
-#                 text = line.strip().decode('866')
-#                 print(text)
-#             if not line:
-#                 break
-#         proc.wait()
-#     else:
-#         shutil.copy(src, dst)
+                    backups_logger.critical('Error copying and unlinking ')
+            backups_logger.info('\n')
 
 
 if __name__ == '__main__':
     # Generate test files from now to specified date. Store them in specified location
     # generate_test_files(datetime.strptime('2021-10-10', '%Y-%m-%d'), 'C:\\Users\\krabs\\Desktop\\bak')
+
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
+    backups_logger = logging.getLogger("backups_main_log")
+    if not os.path.exists('./purger_logs'):
+        os.makedirs('./purger_logs')
+    log_handler = RotatingFileHandler(os.path.join('./purger_logs', 'backup_purger.log'),
+                                      maxBytes=1024*1024*40,
+                                      backupCount=20)
+    log_handler.setFormatter(
+        logging.Formatter(fmt='%(asctime)s %(levelname)s %(message)s', datefmt='%Y/%m/%d %H:%M:%S'))
+    backups_logger.addHandler(log_handler)
+    backups_logger.setLevel(logging.INFO)
+
+    backups_logger.info("Started at " + datetime.now().strftime("%Y/%m/%d, %H:%M:%S"))
 
     settings = read_config('bak_config.ini')
     settings['today'] = datetime.now()
@@ -297,3 +311,4 @@ if __name__ == '__main__':
         copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
         # delete these files
         unlink_files(files_to_delete, settings['dry_run'])
+    backups_logger.info("Finished at " + datetime.now().strftime("%Y/%m/%d, %H:%M:%S"))

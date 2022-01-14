@@ -80,7 +80,7 @@ def get_files_to_keep(all_files, storage_settings):
             continue
 
         if count < storage_settings['keep_last'] or storage_settings['keep_last'] < 0:
-            backups_logger.debug(str(count) + ' out of last ' + str(storage_settings['keep_last'])
+            backups_logger.debug(str(count + 1) + ' out of last ' + str(storage_settings['keep_last'])
                                  + ' that are always kept')
             keep_files['last'][count + 1] = current_file
             today_week = parsed_file['week']
@@ -153,7 +153,7 @@ def leave_only_removing_files(all_files, keep_list, target_settings):
 def unlink_files(files, is_test):
     backups_logger.info('Deleting excess files \n')
     for file_to_delete in files:
-        backups_logger.info('Deleting file' + str(file_to_delete))
+        backups_logger.info('Deleting file ' + str(file_to_delete))
         if not is_test:
             file_to_delete.unlink()
 
@@ -301,6 +301,8 @@ if __name__ == '__main__':
     settings['today'] = datetime.now()
     try:
         for current_target_settings in settings['targets']:
+            backups_logger.info('\n\n')
+            backups_logger.info('Processing target: ' + str(current_target_settings['dst_dir']))
             # collect all files from folder
             all_files_list = get_files(current_target_settings)
             # select files to keep and return readable structure
@@ -315,6 +317,7 @@ if __name__ == '__main__':
             copy_remote_files(remote_files_to_copy, current_target_settings, settings['dry_run'])
             # delete these files
             unlink_files(files_to_delete, settings['dry_run'])
+
         backups_logger.info("Finished at " + datetime.now().strftime("%Y/%m/%d, %H:%M:%S"))
         sys.exit(0)
     except Exception as unhandled_err:

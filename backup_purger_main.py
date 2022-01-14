@@ -151,7 +151,12 @@ def leave_only_removing_files(all_files, keep_list, target_settings):
 
 
 def unlink_files(files, is_test):
-    backups_logger.info('Deleting excess files \n')
+    if not is_test:
+        backups_logger.info('Deleting excess files \n')
+    else:
+        backups_logger.info('Deleting excess files')
+        backups_logger.info('Dry run, files would not be removed \n')
+
     for file_to_delete in files:
         backups_logger.info('Deleting file ' + str(file_to_delete))
         if not is_test:

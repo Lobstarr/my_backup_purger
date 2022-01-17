@@ -186,7 +186,7 @@ def read_config(config_file):
                 else:
                     backups_logger.setLevel(logging.INFO)
             elif config[section].getboolean('active'):
-                target_params = {}
+                target_params = {'section_name': section}
 
                 for param in config[section]:
                     if param in ['keep_last', 'keep_weeks', 'keep_months', 'keep_years']:
@@ -307,7 +307,11 @@ if __name__ == '__main__':
     try:
         for current_target_settings in settings['targets']:
             backups_logger.info('\n\n')
-            backups_logger.info('Processing target: ' + str(current_target_settings['dst_dir']))
+            backups_logger.info('Processing section: ' + str(current_target_settings['section_name']))
+            backups_logger.info('last: ' + str(current_target_settings['keep_last']) +
+                                ', weeks: ' + str(current_target_settings['keep_weeks']) +
+                                ', months: ' + str(current_target_settings['keep_months']) +
+                                ', years: ' + str(current_target_settings['keep_years']))
             # collect all files from folder
             all_files_list = get_files(current_target_settings)
             # select files to keep and return readable structure
